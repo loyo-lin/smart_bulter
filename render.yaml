@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: smart-butler-api
+    env: python
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn main:app --host 0.0.0.0 --port $PORT"
+    envVars:
+      - key: SMART_BUTLER_ENV
+        value: prod
+      - key: SMART_BUTLER_ALLOW_ORIGINS
+        value: "*"
+      - key: SMART_BUTLER_MODEL
+        value: qwen-turbo
+      - key: DASHSCOPE_API_KEY
+        sync: false
