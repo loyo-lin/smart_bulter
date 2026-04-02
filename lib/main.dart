@@ -474,6 +474,7 @@ class _ChatScreenState extends State<ChatScreen> {
   String? _cachedInspirationBody;
   DateTime? _lastStatsLoadedAt;
   DateTime? _lastHabitsLoadedAt;
+  DateTime? _lastPhraseCardsLoadedAt;
 
   @override
   void initState() {
@@ -822,6 +823,13 @@ class _ChatScreenState extends State<ChatScreen> {
     await _loadHabits();
   }
 
+  Future<void> _loadPhraseCardsIfStale({
+    Duration maxAge = const Duration(seconds: 30),
+  }) async {
+    if (_isFresh(_lastPhraseCardsLoadedAt, maxAge)) return;
+    await _loadPhraseCards();
+  }
+
   StatsSnapshot _currentStatsSnapshot() {
     return StatsSnapshot(
       streaks: List<StreakItem>.from(_streaks),
@@ -925,6 +933,7 @@ class _ChatScreenState extends State<ChatScreen> {
             .map((item) => PhraseCardItem.fromJson(item as Map<String, dynamic>))
             .toList();
       });
+      _lastPhraseCardsLoadedAt = DateTime.now();
     } catch (e) {
       debugPrint('Failed to load phrase cards: $e');
     }
@@ -1322,7 +1331,7 @@ My inputs:
   }
 
   Future<void> _openPhraseBookPage() async {
-    await _loadPhraseCards();
+    await _loadPhraseCardsIfStale();
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1400,12 +1409,23 @@ My inputs:
   }
 
   Future<void> _openFeaturePage() async {
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute<void>(
+    final result = await Navigator.of(context).push<Map<String, dynamic>?>(
+      MaterialPageRoute<Map<String, dynamic>?>(
         builder: (context) => FeaturesPage(
           onAction: (action) => _handleFeatureAction(action),
+          apiBaseUrl: apiBaseUrl,
         ),
       ),
+    );
+    if (result == null || result['submitted'] != true) return;
+    final prompt = result['prompt']?.toString().trim() ?? '';
+    final preview =
+        result['preview']?.toString().trim() ?? 'English practice request';
+    if (prompt.isEmpty) return;
+    await _sendMessageWithText(
+      prompt,
+      visibleText: preview,
+      hiddenPrompt: prompt,
     );
   }
 
@@ -2182,9 +2202,14 @@ class SettingsPage extends StatefulWidget {
 }
 
 class FeaturesPage extends StatelessWidget {
-  const FeaturesPage({super.key, required this.onAction});
+  const FeaturesPage({
+    super.key,
+    required this.onAction,
+    required this.apiBaseUrl,
+  });
 
   final Future<void> Function(String action) onAction;
+  final String apiBaseUrl;
 
   @override
   Widget build(BuildContext context) {
@@ -2195,6 +2220,17 @@ class FeaturesPage extends StatelessWidget {
           title: Text(title),
           trailing: const Icon(Icons.chevron_right),
           onTap: () async {
+            if (action == 'english') {
+              final result = await Navigator.of(context).push<Map<String, dynamic>>(
+                MaterialPageRoute<Map<String, dynamic>>(
+                  builder: (context) => EnglishPracticePage(apiBaseUrl: apiBaseUrl),
+                ),
+              );
+              if (result != null && context.mounted && result['submitted'] == true) {
+                Navigator.of(context).pop(result);
+              }
+              return;
+            }
             await onAction(action);
           },
         ),
