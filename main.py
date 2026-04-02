@@ -1091,20 +1091,19 @@ def init_db() -> None:
     with SessionLocal() as db:
         settings = db.query(UserSettings).filter(UserSettings.id == 1).first()
         if not settings:
-            db.add(
-                UserSettings(
-                    id=1,
-                    total_quota=INITIAL_QUOTA,
-                    english_mode=False,
-                    proactive_followup=True,
-                    do_not_disturb_start="23:30",
-                    do_not_disturb_end="07:00",
-                    bedtime_time="22:30",
-                    freeze_tokens=1,
-                    freeze_used_this_week=0,
-                    freeze_week_anchor=week_anchor(),
-                )
+            settings = UserSettings(
+                id=1,
+                total_quota=INITIAL_QUOTA,
+                english_mode=False,
+                proactive_followup=True,
+                do_not_disturb_start="23:30",
+                do_not_disturb_end="07:00",
+                bedtime_time="22:30",
+                freeze_tokens=1,
+                freeze_used_this_week=0,
+                freeze_week_anchor=week_anchor(),
             )
+            db.add(settings)
             db.commit()
         elif settings.total_quota is None or settings.total_quota < 0:
             settings.total_quota = INITIAL_QUOTA
