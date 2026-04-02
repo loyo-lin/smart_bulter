@@ -1300,12 +1300,14 @@ My inputs:
   Future<void> _openEnglishPracticePage({
     bool popFeatureCenterAfterSubmit = false,
   }) async {
-    final request = await Navigator.of(context).push<Map<String, String>>(
-      MaterialPageRoute<Map<String, String>>(
+    final request = await Navigator.of(context).push<Map<String, dynamic>>(
+      MaterialPageRoute<Map<String, dynamic>>(
         builder: (context) => EnglishPracticePage(apiBaseUrl: apiBaseUrl),
       ),
     );
     if (request == null) return;
+    final submitted = request['submitted'] == true;
+    if (!submitted) return;
     final prompt = request['prompt']?.trim() ?? '';
     final preview = request['preview']?.trim() ?? 'English practice request';
     if (prompt.isEmpty) return;
@@ -4308,6 +4310,7 @@ Keep it concise, practical, and speech-ready.
 $ieltsExtra
 ''';
     Navigator.of(context).pop({
+      'submitted': true,
       'prompt': prompt.trim(),
       'preview': 'English practice: "$sentence" ($_scene)',
     });
