@@ -472,6 +472,8 @@ class _ChatScreenState extends State<ChatScreen> {
   List<PhraseCardItem> _phraseCards = const [];
   String? _cachedInspirationDate;
   String? _cachedInspirationBody;
+  DateTime? _lastStatsLoadedAt;
+  DateTime? _lastHabitsLoadedAt;
 
   @override
   void initState() {
@@ -633,6 +635,7 @@ class _ChatScreenState extends State<ChatScreen> {
             .map((item) => HabitItemModel.fromJson(item as Map<String, dynamic>))
             .toList();
       });
+      _lastHabitsLoadedAt = DateTime.now();
     } catch (e) {
       debugPrint('Failed to load habits: $e');
     }
@@ -794,9 +797,29 @@ class _ChatScreenState extends State<ChatScreen> {
           (data['week_report'] as Map<String, dynamic>?) ?? const {},
         );
       });
+      _lastStatsLoadedAt = DateTime.now();
     } catch (e) {
       debugPrint('Failed to load stats: $e');
     }
+  }
+
+  bool _isFresh(DateTime? last, Duration maxAge) {
+    if (last == null) return false;
+    return DateTime.now().difference(last) < maxAge;
+  }
+
+  Future<void> _loadStatsIfStale({
+    Duration maxAge = const Duration(seconds: 20),
+  }) async {
+    if (_isFresh(_lastStatsLoadedAt, maxAge)) return;
+    await _loadStats();
+  }
+
+  Future<void> _loadHabitsIfStale({
+    Duration maxAge = const Duration(seconds: 30),
+  }) async {
+    if (_isFresh(_lastHabitsLoadedAt, maxAge)) return;
+    await _loadHabits();
   }
 
   StatsSnapshot _currentStatsSnapshot() {
@@ -1222,7 +1245,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _openStatsPage() async {
-    await _loadStats();
+    await _loadStatsIfStale();
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1274,7 +1297,9 @@ My inputs:
     );
   }
 
-  Future<void> _openEnglishPracticePage() async {
+  Future<void> _openEnglishPracticePage({
+    bool popFeatureCenterAfterSubmit = false,
+  }) async {
     final request = await Navigator.of(context).push<Map<String, String>>(
       MaterialPageRoute<Map<String, String>>(
         builder: (context) => EnglishPracticePage(apiBaseUrl: apiBaseUrl),
@@ -1289,6 +1314,9 @@ My inputs:
       visibleText: preview,
       hiddenPrompt: prompt,
     );
+    if (popFeatureCenterAfterSubmit && mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 
   Future<void> _openPhraseBookPage() async {
@@ -1307,7 +1335,7 @@ My inputs:
   }
 
   Future<void> _openTodayDashboardPage() async {
-    await _loadStats();
+    await _loadStatsIfStale();
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1328,8 +1356,8 @@ My inputs:
   }
 
   Future<void> _openHabitCenterPage() async {
-    await _loadHabits();
-    await _loadStats();
+    await _loadHabitsIfStale();
+    await _loadStatsIfStale();
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -1363,23 +1391,20 @@ My inputs:
     } else if (action == 'review') {
       await _openReviewPage();
     } else if (action == 'english') {
-      await _openEnglishPracticePage();
+      await _openEnglishPracticePage(popFeatureCenterAfterSubmit: true);
     } else if (action == 'phrases') {
       await _openPhraseBookPage();
     }
   }
 
   Future<void> _openFeaturePage() async {
-    final result = await Navigator.of(context).push<String?>(
-      MaterialPageRoute<String?>(
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
         builder: (context) => FeaturesPage(
           onAction: (action) => _handleFeatureAction(action),
         ),
       ),
     );
-    if (result == 'english') {
-      await _openEnglishPracticePage();
-    }
   }
 
   String _taskSubtitle(ButlerTaskConfig task) {
@@ -2169,10 +2194,6 @@ class FeaturesPage extends StatelessWidget {
           title: Text(title),
           trailing: const Icon(Icons.chevron_right),
           onTap: () async {
-            if (action == 'english') {
-              Navigator.of(context).pop('english');
-              return;
-            }
             await onAction(action);
           },
         ),
