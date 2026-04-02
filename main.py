@@ -35,8 +35,19 @@ def load_local_env_file(path: str = ".env.local") -> None:
 load_local_env_file()
 
 
+def resolve_database_url() -> str:
+    raw_url = (
+        os.getenv("SMART_BUTLER_DB_URL")
+        or os.getenv("DATABASE_URL")
+        or "sqlite:///./chat_history.db"
+    ).strip()
+    if raw_url.startswith("postgresql://"):
+        return raw_url.replace("postgresql://", "postgresql+psycopg://", 1)
+    return raw_url
+
+
 APP_ENV = os.getenv("SMART_BUTLER_ENV", "dev").strip().lower()
-SQLALCHEMY_DATABASE_URL = os.getenv("SMART_BUTLER_DB_URL", "sqlite:///./chat_history.db")
+SQLALCHEMY_DATABASE_URL = resolve_database_url()
 DEFAULT_MODEL = "qwen-turbo"
 DEFAULT_API_BASE = "https://dashscope.aliyuncs.com/compatible-mode/v1"
 LLM_API_BASE = os.getenv("DASHSCOPE_BASE_URL") or os.getenv("OPENAI_BASE_URL") or DEFAULT_API_BASE
