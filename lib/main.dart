@@ -1426,7 +1426,6 @@ My inputs:
         .where(
           (line) =>
               RegExp(r'^\d+\)').hasMatch(line) ||
-              line.startsWith('- ') ||
               line.endsWith(':'),
         )
         .toList();
