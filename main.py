@@ -245,6 +245,7 @@ class StreakFreezeDay(Base):
 
 class ChatRequest(BaseModel):
     message: str
+    visible_text: Optional[str] = None
 
 
 class TaskConfigPayload(BaseModel):
@@ -2214,6 +2215,7 @@ def delete_progress_event_compat_v2(event_id: int, db: Session = Depends(get_db)
 @app.post("/api/chat")
 def chat_with_butler(request: ChatRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
     user_msg = request.message.strip()
+    user_visible_text = (request.visible_text or "").strip()
 
     settings = db.query(UserSettings).filter(UserSettings.id == 1).first()
     current_quota = settings.total_quota if settings else 0
@@ -2345,7 +2347,7 @@ def chat_with_butler(request: ChatRequest, db: Session = Depends(get_db)) -> dic
 
         user_time = current_time_str()
         assistant_time = current_time_str()
-        db.add(DBMessage(role="user", content=user_msg, time=user_time))
+        db.add(DBMessage(role="user", content=user_visible_text or user_msg, time=user_time))
         db.add(DBMessage(role="assistant", content=reply_content, time=assistant_time))
 
         if settings:

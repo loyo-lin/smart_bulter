@@ -1133,7 +1133,10 @@ class _ChatScreenState extends State<ChatScreen> {
       final response = await http.post(
         Uri.parse('$apiBaseUrl/chat'),
         headers: {'Content-Type': 'application/json; charset=utf-8'},
-        body: jsonEncode({'message': text}),
+        body: jsonEncode({
+          'message': text,
+          if (visibleText != null) 'visible_text': visibleText,
+        }),
       );
 
       if (response.statusCode != 200) {
@@ -1438,23 +1441,40 @@ My inputs:
     return 'Daily at ${task.timeOfDay ?? '--:--'}';
   }
 
-  List<String> _extractStructuredLines(String text) {
+  bool _isStructuredHeading(String line) {
+    final trimmed = line.trim();
+    return RegExp(r'^\d+\)').hasMatch(trimmed) || trimmed.endsWith(':');
+  }
+
+  List<String> _extractStructuredBlocks(String text) {
     final lines = text
         .split('\n')
         .map((line) => line.trim())
         .where((line) => line.isNotEmpty)
         .toList();
-    return lines
-        .where(
-          (line) =>
-              RegExp(r'^\d+\)').hasMatch(line) ||
-              line.endsWith(':'),
-        )
-        .toList();
+    final blocks = <String>[];
+    final current = <String>[];
+
+    for (final line in lines) {
+      if (_isStructuredHeading(line)) {
+        if (current.isNotEmpty) {
+          blocks.add(current.join('\n'));
+          current.clear();
+        }
+        current.add(line);
+      } else if (current.isNotEmpty) {
+        current.add(line);
+      }
+    }
+
+    if (current.isNotEmpty) {
+      blocks.add(current.join('\n'));
+    }
+    return blocks;
   }
 
   Widget _buildAssistantContent(String content) {
-    final structured = _extractStructuredLines(content);
+    final structured = _extractStructuredBlocks(content);
     if (structured.length < 2) {
       return Text(content, style: const TextStyle(fontSize: 16));
     }
