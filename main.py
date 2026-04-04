@@ -145,6 +145,7 @@ class DBMessage(Base):
     role = Column(String(50))
     content = Column(Text)
     time = Column(String(8), nullable=False, default="")
+    message_type = Column(String(30), nullable=False, default="chat")
 
 
 class UserSettings(Base):
@@ -246,6 +247,7 @@ class StreakFreezeDay(Base):
 class ChatRequest(BaseModel):
     message: str
     visible_text: Optional[str] = None
+    message_type: str = "chat"
 
 
 class TaskConfigPayload(BaseModel):
@@ -1063,6 +1065,7 @@ def init_db() -> None:
     Base.metadata.create_all(bind=engine)
 
     ensure_column("messages", "time", "time VARCHAR(8) NOT NULL DEFAULT ''")
+    ensure_column("messages", "message_type", "message_type VARCHAR(30) NOT NULL DEFAULT 'chat'")
     ensure_column("stat_events", "event_time", "event_time VARCHAR(8) NOT NULL DEFAULT '00:00:00'")
     ensure_column("task_configs", "route", "route VARCHAR(30) NOT NULL DEFAULT 'task'")
     ensure_column("user_settings", "english_mode", "english_mode BOOLEAN NOT NULL DEFAULT 0")
@@ -1592,6 +1595,7 @@ def get_history(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "role": record.role,
                 "content": record.content,
                 "time": record.time or "",
+                "message_type": record.message_type or "chat",
             }
             for record in records
         ],
@@ -2216,6 +2220,7 @@ def delete_progress_event_compat_v2(event_id: int, db: Session = Depends(get_db)
 def chat_with_butler(request: ChatRequest, db: Session = Depends(get_db)) -> dict[str, Any]:
     user_msg = request.message.strip()
     user_visible_text = (request.visible_text or "").strip()
+    message_type = (request.message_type or "chat").strip() or "chat"
 
     settings = db.query(UserSettings).filter(UserSettings.id == 1).first()
     current_quota = settings.total_quota if settings else 0
@@ -2253,7 +2258,12 @@ def chat_with_butler(request: ChatRequest, db: Session = Depends(get_db)) -> dic
     messages = [
         {"role": "system", "content": build_system_prompt(settings, db)},
     ]
-    history_records = db.query(DBMessage).order_by(DBMessage.id.asc()).all()[-10:]
+    history_records = (
+        db.query(DBMessage)
+        .filter(DBMessage.message_type == "chat")
+        .order_by(DBMessage.id.asc())
+        .all()[-10:]
+    )
     for record in history_records:
         messages.append({"role": record.role, "content": record.content})
     messages.append({"role": "user", "content": user_msg})
@@ -2347,8 +2357,22 @@ def chat_with_butler(request: ChatRequest, db: Session = Depends(get_db)) -> dic
 
         user_time = current_time_str()
         assistant_time = current_time_str()
-        db.add(DBMessage(role="user", content=user_visible_text or user_msg, time=user_time))
-        db.add(DBMessage(role="assistant", content=reply_content, time=assistant_time))
+        db.add(
+            DBMessage(
+                role="user",
+                content=user_visible_text or user_msg,
+                time=user_time,
+                message_type=message_type,
+            )
+        )
+        db.add(
+            DBMessage(
+                role="assistant",
+                content=reply_content,
+                time=assistant_time,
+                message_type=message_type,
+            )
+        )
 
         if settings:
             settings.total_quota = max(0, settings.total_quota - used_tokens)

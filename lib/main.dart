@@ -1117,6 +1117,7 @@ class _ChatScreenState extends State<ChatScreen> {
     String text, {
     String? visibleText,
     String? hiddenPrompt,
+    String messageType = 'chat',
   }) async {
     setState(() {
       _messages.add({
@@ -1136,6 +1137,7 @@ class _ChatScreenState extends State<ChatScreen> {
         body: jsonEncode({
           'message': text,
           if (visibleText != null) 'visible_text': visibleText,
+          'message_type': messageType,
         }),
       );
 
@@ -1306,6 +1308,7 @@ My inputs:
       prompt.trim(),
       visibleText: 'Night reflection request',
       hiddenPrompt: prompt.trim(),
+      messageType: 'review',
     );
   }
 
@@ -1327,6 +1330,7 @@ My inputs:
       prompt,
       visibleText: preview,
       hiddenPrompt: prompt,
+      messageType: 'english_practice',
     );
     if (popFeatureCenterAfterSubmit && mounted && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
@@ -1429,6 +1433,7 @@ My inputs:
       prompt,
       visibleText: preview,
       hiddenPrompt: prompt,
+      messageType: 'english_practice',
     );
   }
 
