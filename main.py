@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime
 import difflib
 import json
@@ -7,7 +9,7 @@ import shutil
 from pathlib import Path
 import argparse
 from contextlib import asynccontextmanager
-from typing import Any, Generator
+from typing import Any, Generator, Optional
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -251,8 +253,8 @@ class TaskConfigPayload(BaseModel):
     body: str
     enabled: bool
     schedule_type: str
-    interval_minutes: int | None = None
-    time_of_day: str | None = None
+    interval_minutes: Optional[int] = None
+    time_of_day: Optional[str] = None
     route: str = "task"
 
 
@@ -277,7 +279,7 @@ class ProgressRecordPayload(BaseModel):
 
 class ProgressDayPayload(BaseModel):
     stat_key: str
-    target_date: str | None = None
+    target_date: Optional[str] = None
 
 
 class HabitPayload(BaseModel):
@@ -317,7 +319,7 @@ def today_str() -> str:
     return datetime.date.today().isoformat()
 
 
-def week_anchor(day: datetime.date | None = None) -> str:
+def week_anchor(day: Optional[datetime.date] = None) -> str:
     base = day or datetime.date.today()
     monday = base - datetime.timedelta(days=base.weekday())
     return monday.isoformat()
@@ -333,7 +335,7 @@ def should_use_english(text_value: str) -> bool:
     return has_english and not has_chinese
 
 
-def normalize_reply_text(reply: str | None) -> str:
+def normalize_reply_text(reply: Optional[str]) -> str:
     if not reply:
         return ""
     cleaned = reply
@@ -427,7 +429,7 @@ def default_task_configs() -> list[dict[str, object]]:
     ]
 
 
-def today_inspiration(day: datetime.date | None = None) -> dict[str, str]:
+def today_inspiration(day: Optional[datetime.date] = None) -> dict[str, str]:
     target_day = day or datetime.date.today()
     index = (target_day.toordinal() * 7 + target_day.month) % len(DAILY_INSPIRATION_LIBRARY)
     return DAILY_INSPIRATION_LIBRARY[index]
@@ -1165,7 +1167,7 @@ def memory_summary(db: Session) -> str:
     return "\n".join(lines)
 
 
-def settings_summary(settings: UserSettings | None) -> str:
+def settings_summary(settings: Optional[UserSettings]) -> str:
     if settings is None:
         return "No user settings found."
     return (
@@ -1177,7 +1179,7 @@ def settings_summary(settings: UserSettings | None) -> str:
     )
 
 
-def build_system_prompt(settings: UserSettings | None, db: Session) -> str:
+def build_system_prompt(settings: Optional[UserSettings], db: Session) -> str:
     return f"""
 You are Smart Butler, a private AI butler for daily support, emotional companionship, English practice, and reflective coaching.
 
