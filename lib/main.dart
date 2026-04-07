@@ -3535,7 +3535,7 @@ Please respond in a natural, conversational tone (not textbook style), and do th
 1) Fix my sentence.
 2) Give one natural daily-life version I can really say out loud.
 3) Give one more polished version useful for IELTS speaking.
-4) Explain 1-2 key phrases briefly (simple Chinese + English meaning, no pinyin).
+4) Explain 1-2 key phrases briefly: English word/phrase + IPA pronunciation + simple Chinese meaning. Do not use Chinese pinyin.
 5) Ask one follow-up question so I can continue speaking.
 6) Give one extra daily spoken line + one IELTS-friendly line.
 
