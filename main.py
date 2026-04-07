@@ -1686,6 +1686,9 @@ def delete_habit(habit_key: str, db: Session = Depends(get_db)) -> dict[str, str
     if row is None:
         raise HTTPException(status_code=404, detail="Habit not found")
     db.delete(row)
+    db.query(StatEvent).filter(StatEvent.stat_key == habit_key).delete()
+    db.query(StreakStat).filter(StreakStat.stat_key == habit_key).delete()
+    db.query(StreakFreezeDay).filter(StreakFreezeDay.stat_key == habit_key).delete()
     db.commit()
     return {"status": "success"}
 
@@ -1696,29 +1699,32 @@ def checkin_habit(habit_key: str, db: Session = Depends(get_db)) -> dict[str, An
     if row is None:
         raise HTTPException(status_code=404, detail="Habit not found")
 
-    now_dt = current_datetime()
-    now_time = now_dt.strftime("%H:%M:%S")
+    now_time = current_datetime().strftime("%H:%M:%S")
     day = today_str()
+
+    db.add(StatEvent(stat_key=habit_key, event_date=day, event_time=now_time))
+    db.flush()
+    recompute_streak(db, habit_key)
+    db.commit()
+    return get_stats(db)
+
+
+@app.delete("/api/habits/{habit_key}/checkin")
+def undo_habit_checkin(habit_key: str, db: Session = Depends(get_db)) -> dict[str, Any]:
+    row = db.query(HabitItem).filter(HabitItem.habit_key == habit_key).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="Habit not found")
 
     latest = (
         db.query(StatEvent)
-        .filter(StatEvent.stat_key == habit_key, StatEvent.event_date == day)
+        .filter(StatEvent.stat_key == habit_key, StatEvent.event_date == today_str())
         .order_by(StatEvent.id.desc())
         .first()
     )
-    if latest is not None:
-        try:
-            latest_dt = datetime.datetime.strptime(
-                f"{latest.event_date} {latest.event_time}",
-                "%Y-%m-%d %H:%M:%S",
-            )
-            if (now_dt - latest_dt).total_seconds() <= 5:
-                return get_stats(db)
-        except Exception:
-            if latest.event_time == now_time:
-                return get_stats(db)
+    if latest is None:
+        return get_stats(db)
 
-    db.add(StatEvent(stat_key=habit_key, event_date=day, event_time=now_time))
+    db.delete(latest)
     db.flush()
     recompute_streak(db, habit_key)
     db.commit()
@@ -2044,7 +2050,7 @@ def get_stats(db: Session = Depends(get_db)) -> dict[str, Any]:
                 "event_date": item.event_date,
                 "event_time": item.event_time,
             }
-            for item in db.query(StatEvent).order_by(StatEvent.id.desc()).limit(60).all()
+            for item in db.query(StatEvent).order_by(StatEvent.id.desc()).limit(500).all()
         ],
     }
 

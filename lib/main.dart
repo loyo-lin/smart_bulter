@@ -6,6 +6,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:http/http.dart' as http;
 
+import 'habit_center.dart';
+import 'habit_models.dart';
+
 void main() {
   runApp(const SmartButlerApp());
 }
@@ -96,46 +99,6 @@ class ButlerTaskConfig {
   }
 }
 
-class HabitItemModel {
-  const HabitItemModel({
-    required this.habitKey,
-    required this.title,
-    required this.icon,
-    required this.category,
-    required this.enabled,
-    required this.isCustom,
-  });
-
-  final String habitKey;
-  final String title;
-  final String icon;
-  final String category;
-  final bool enabled;
-  final bool isCustom;
-
-  factory HabitItemModel.fromJson(Map<String, dynamic> json) {
-    return HabitItemModel(
-      habitKey: json['habit_key']?.toString() ?? '',
-      title: json['title']?.toString() ?? '',
-      icon: json['icon']?.toString() ?? 'check_circle',
-      category: json['category']?.toString() ?? 'wellbeing',
-      enabled: json['enabled'] == true,
-      isCustom: json['is_custom'] == true,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'habit_key': habitKey,
-      'title': title,
-      'icon': icon,
-      'category': category,
-      'enabled': enabled,
-      'is_custom': isCustom,
-    };
-  }
-}
-
 class ButlerSettings {
   const ButlerSettings({
     required this.englishMode,
@@ -195,26 +158,6 @@ class MemoryItem {
   }
 }
 
-class StreakItem {
-  const StreakItem({
-    required this.statKey,
-    required this.count,
-    required this.lastDate,
-  });
-
-  final String statKey;
-  final int count;
-  final String? lastDate;
-
-  factory StreakItem.fromJson(Map<String, dynamic> json) {
-    return StreakItem(
-      statKey: json['stat_key']?.toString() ?? '',
-      count: (json['count'] as num?)?.toInt() ?? 0,
-      lastDate: json['last_date']?.toString(),
-    );
-  }
-}
-
 class ProgressSummary {
   const ProgressSummary({
     required this.todayActiveCount,
@@ -242,10 +185,7 @@ class ProgressSummary {
 }
 
 class DailyActivity {
-  const DailyActivity({
-    required this.date,
-    required this.events,
-  });
+  const DailyActivity({required this.date, required this.events});
 
   final String date;
   final int events;
@@ -254,29 +194,6 @@ class DailyActivity {
     return DailyActivity(
       date: json['date']?.toString() ?? '',
       events: (json['events'] as num?)?.toInt() ?? 0,
-    );
-  }
-}
-
-class ProgressEvent {
-  const ProgressEvent({
-    required this.id,
-    required this.statKey,
-    required this.eventDate,
-    required this.eventTime,
-  });
-
-  final int id;
-  final String statKey;
-  final String eventDate;
-  final String eventTime;
-
-  factory ProgressEvent.fromJson(Map<String, dynamic> json) {
-    return ProgressEvent(
-      id: (json['id'] as num?)?.toInt() ?? 0,
-      statKey: json['stat_key']?.toString() ?? '',
-      eventDate: json['event_date']?.toString() ?? '',
-      eventTime: json['event_time']?.toString() ?? '00:00:00',
     );
   }
 }
@@ -434,7 +351,8 @@ class _ChatScreenState extends State<ChatScreen> {
   final Map<String, Timer> _taskTimers = {};
 
   static const String _apiFromDefine = String.fromEnvironment('API_BASE_URL');
-  static const String _prodApiDefault = 'https://your-api-domain.example.com/api';
+  static const String _prodApiDefault =
+      'https://your-api-domain.example.com/api';
   final String apiBaseUrl = _apiFromDefine.isNotEmpty
       ? _apiFromDefine
       : (kReleaseMode ? _prodApiDefault : 'http://10.0.2.2:8000/api');
@@ -513,7 +431,9 @@ class _ChatScreenState extends State<ChatScreen> {
       };
     }
     if (role == 'user' &&
-        content.contains('Please give me a concise night reflection using 4 sections')) {
+        content.contains(
+          'Please give me a concise night reflection using 4 sections',
+        )) {
       return {
         'role': role,
         'content': 'Night reflection request',
@@ -556,10 +476,11 @@ class _ChatScreenState extends State<ChatScreen> {
     } catch (e) {
       debugPrint('Failed to load history: $e');
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
@@ -594,7 +515,9 @@ class _ChatScreenState extends State<ChatScreen> {
       return _cachedInspirationBody;
     }
     try {
-      final response = await http.get(Uri.parse('$apiBaseUrl/inspiration/today'));
+      final response = await http.get(
+        Uri.parse('$apiBaseUrl/inspiration/today'),
+      );
       if (response.statusCode != 200) return null;
       final data =
           jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
@@ -633,7 +556,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _habits = list
-            .map((item) => HabitItemModel.fromJson(item as Map<String, dynamic>))
+            .map(
+              (item) => HabitItemModel.fromJson(item as Map<String, dynamic>),
+            )
             .toList();
       });
       _lastHabitsLoadedAt = DateTime.now();
@@ -655,19 +580,43 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _deleteHabit(String habitKey) async {
-    final response = await http.delete(Uri.parse('$apiBaseUrl/habits/$habitKey'));
+    final response = await http.delete(
+      Uri.parse('$apiBaseUrl/habits/$habitKey'),
+    );
     if (response.statusCode != 200) {
       throw Exception('Unable to delete habit: ${response.statusCode}');
     }
     await _loadHabits();
+    await _loadStats();
   }
 
-  Future<void> _checkInHabit(String habitKey) async {
-    final response = await http.post(Uri.parse('$apiBaseUrl/habits/$habitKey/checkin'));
+  HabitMutationResult _currentHabitMutationResult() {
+    return HabitMutationResult(
+      streaks: List<StreakItem>.from(_streaks),
+      events: List<ProgressEvent>.from(_progressEvents),
+    );
+  }
+
+  Future<HabitMutationResult> _checkInHabit(String habitKey) async {
+    final response = await http.post(
+      Uri.parse('$apiBaseUrl/habits/$habitKey/checkin'),
+    );
     if (response.statusCode != 200) {
       throw Exception('Unable to check in habit: ${response.statusCode}');
     }
     await _loadStats();
+    return _currentHabitMutationResult();
+  }
+
+  Future<HabitMutationResult> _undoHabitCheckIn(String habitKey) async {
+    final response = await http.delete(
+      Uri.parse('$apiBaseUrl/habits/$habitKey/checkin'),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Unable to undo habit check-in: ${response.statusCode}');
+    }
+    await _loadStats();
+    return _currentHabitMutationResult();
   }
 
   Future<void> _deleteTask(String taskKey) async {
@@ -930,7 +879,9 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted) return;
       setState(() {
         _phraseCards = list
-            .map((item) => PhraseCardItem.fromJson(item as Map<String, dynamic>))
+            .map(
+              (item) => PhraseCardItem.fromJson(item as Map<String, dynamic>),
+            )
             .toList();
       });
       _lastPhraseCardsLoadedAt = DateTime.now();
@@ -947,11 +898,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final response = await http.post(
       Uri.parse('$apiBaseUrl/phrase_cards'),
       headers: {'Content-Type': 'application/json; charset=utf-8'},
-      body: jsonEncode({
-        'phrase': phrase,
-        'scene': scene,
-        'note': note,
-      }),
+      body: jsonEncode({'phrase': phrase, 'scene': scene, 'note': note}),
     );
     if (response.statusCode != 200) {
       throw Exception('Unable to save phrase: ${response.statusCode}');
@@ -961,7 +908,9 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<List<PhraseCardItem>> _deletePhraseCard(int cardId) async {
-    final response = await http.delete(Uri.parse('$apiBaseUrl/phrase_cards/$cardId'));
+    final response = await http.delete(
+      Uri.parse('$apiBaseUrl/phrase_cards/$cardId'),
+    );
     if (response.statusCode != 200) {
       throw Exception('Unable to delete phrase: ${response.statusCode}');
     }
@@ -970,30 +919,34 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _initNotifications() async {
-    const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
-    );
-    const settings = InitializationSettings(android: androidSettings);
-    await _notifications.initialize(
-      settings,
-      onDidReceiveNotificationResponse: (notificationResponse) {
-        _handleNotificationPayload(notificationResponse.payload);
-      },
-    );
+    try {
+      const androidSettings = AndroidInitializationSettings(
+        '@mipmap/ic_launcher',
+      );
+      const settings = InitializationSettings(android: androidSettings);
+      await _notifications.initialize(
+        settings,
+        onDidReceiveNotificationResponse: (notificationResponse) {
+          _handleNotificationPayload(notificationResponse.payload);
+        },
+      );
 
-    final androidPlugin = _notifications
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-    await androidPlugin?.requestNotificationsPermission();
+      final androidPlugin = _notifications
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >();
+      await androidPlugin?.requestNotificationsPermission();
+    } catch (e) {
+      debugPrint('Notifications unavailable: $e');
+    }
   }
 
   Future<void> _showNotification(
     String title,
     String body,
-    int delaySeconds,
-    {String route = 'task'}
-  ) async {
+    int delaySeconds, {
+    String route = 'task',
+  }) async {
     Future.delayed(Duration(seconds: delaySeconds), () async {
       const androidDetails = AndroidNotificationDetails(
         'butler_channel',
@@ -1119,26 +1072,31 @@ class _ChatScreenState extends State<ChatScreen> {
     String? hiddenPrompt,
     String messageType = 'chat',
   }) async {
+    final displayMessage = {
+      'role': 'user',
+      'content': visibleText ?? text,
+      'time': _getCurrentTime(),
+    };
+    if (hiddenPrompt != null) {
+      displayMessage['hidden_prompt'] = hiddenPrompt;
+    }
+
     setState(() {
-      _messages.add({
-        'role': 'user',
-        'content': visibleText ?? text,
-        if (hiddenPrompt != null) 'hidden_prompt': hiddenPrompt,
-        'time': _getCurrentTime(),
-      });
+      _messages.add(displayMessage);
       _isLoading = true;
     });
     _scrollToBottom();
 
     try {
+      final requestBody = {'message': text, 'message_type': messageType};
+      if (visibleText != null) {
+        requestBody['visible_text'] = visibleText;
+      }
+
       final response = await http.post(
         Uri.parse('$apiBaseUrl/chat'),
         headers: {'Content-Type': 'application/json; charset=utf-8'},
-        body: jsonEncode({
-          'message': text,
-          if (visibleText != null) 'visible_text': visibleText,
-          'message_type': messageType,
-        }),
+        body: jsonEncode(requestBody),
       );
 
       if (response.statusCode != 200) {
@@ -1181,37 +1139,37 @@ class _ChatScreenState extends State<ChatScreen> {
       });
       _scrollToBottom();
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
   }
 
   Future<void> _openTaskSettingsPage() async {
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (context) =>
-            TaskSettingsPage(
-              tasks: _tasks,
-              onSave: _updateTask,
-              onDelete: (taskKey) async {
-                await _deleteTask(taskKey);
-                if (!mounted) return;
-                setState(() {
-                  _tasks = _tasks.where((task) => task.taskKey != taskKey).toList();
-                });
-                _rescheduleTasks();
-              },
-              onCreate: (task) async {
-                await _saveTask(task);
-                if (!mounted) return;
-                setState(() {
-                  _tasks = [..._tasks, task];
-                });
-                _rescheduleTasks();
-              },
-            ),
+        builder: (context) => TaskSettingsPage(
+          tasks: _tasks,
+          onSave: _updateTask,
+          onDelete: (taskKey) async {
+            await _deleteTask(taskKey);
+            if (!mounted) return;
+            setState(() {
+              _tasks = _tasks.where((task) => task.taskKey != taskKey).toList();
+            });
+            _rescheduleTasks();
+          },
+          onCreate: (task) async {
+            await _saveTask(task);
+            if (!mounted) return;
+            setState(() {
+              _tasks = [..._tasks, task];
+            });
+            _rescheduleTasks();
+          },
+        ),
       ),
     );
   }
@@ -1291,7 +1249,8 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (reviewData == null) return;
 
-    final prompt = '''
+    final prompt =
+        '''
 Please give me a concise night reflection using 4 sections:
 1) Mood
 2) Study
@@ -1332,7 +1291,9 @@ My inputs:
       hiddenPrompt: prompt,
       messageType: 'english_practice',
     );
-    if (popFeatureCenterAfterSubmit && mounted && Navigator.of(context).canPop()) {
+    if (popFeatureCenterAfterSubmit &&
+        mounted &&
+        Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
   }
@@ -1352,39 +1313,25 @@ My inputs:
     );
   }
 
-  Future<void> _openTodayDashboardPage() async {
+  Future<void> _openGrowthCenterPage() async {
+    await _loadHabitsIfStale();
     await _loadStatsIfStale();
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => TodayDashboardPage(
-          tasks: _tasks,
-          habits: _habits,
-          summary: _progressSummary,
-          onCheckIn: (statKey) => _recordProgress(statKey: statKey, count: 1),
-          onHabitCheckIn: (habitKey) => _checkInHabit(habitKey),
-          onOpenEnglish: _openEnglishPracticePage,
-          onOpenReview: _openReviewPage,
-          onOpenTasks: _openTaskSettingsPage,
-          onOpenHabits: _openHabitCenterPage,
-          onOpenProgress: _openStatsPage,
-        ),
-      ),
-    );
+    await _openHabitCenterPage(title: 'Growth Center');
   }
 
-  Future<void> _openHabitCenterPage() async {
+  Future<void> _openHabitCenterPage({String title = 'Growth Center'}) async {
     await _loadHabitsIfStale();
     await _loadStatsIfStale();
     if (!mounted) return;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => HabitCenterPage(
+          title: title,
           habits: _habits,
           streaks: _streaks,
           events: _progressEvents,
-          summary: _progressSummary,
           onCheckIn: _checkInHabit,
+          onUndoCheckIn: _undoHabitCheckIn,
           onSave: _saveHabit,
           onDelete: _deleteHabit,
         ),
@@ -1394,8 +1341,8 @@ My inputs:
   }
 
   Future<void> _handleFeatureAction(String action) async {
-    if (action == 'today') {
-      await _openTodayDashboardPage();
+    if (action == 'growth' || action == 'today') {
+      await _openGrowthCenterPage();
     } else if (action == 'habits') {
       await _openHabitCenterPage();
     } else if (action == 'tasks') {
@@ -1615,16 +1562,24 @@ My inputs:
                               ? const LinearGradient(
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
-                                  colors: [Color(0xFFE8FFFA), Color(0xFFD9F5EE)],
+                                  colors: [
+                                    Color(0xFFE8FFFA),
+                                    Color(0xFFD9F5EE),
+                                  ],
                                 )
                               : const LinearGradient(
                                   begin: Alignment.topLeft,
                                   end: Alignment.bottomRight,
-                                  colors: [Color(0xFFF7F7F7), Color(0xFFEDEDED)],
+                                  colors: [
+                                    Color(0xFFF7F7F7),
+                                    Color(0xFFEDEDED),
+                                  ],
                                 ),
                           borderRadius: BorderRadius.circular(16),
                           border: Border.all(
-                            color: task.enabled ? const Color(0xFF8ED8C6) : Colors.grey.shade300,
+                            color: task.enabled
+                                ? const Color(0xFF8ED8C6)
+                                : Colors.grey.shade300,
                           ),
                           boxShadow: [
                             BoxShadow(
@@ -1662,7 +1617,8 @@ My inputs:
                                 const SizedBox(width: 10),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
@@ -1681,7 +1637,9 @@ My inputs:
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(
                                           fontSize: 12,
-                                          color: task.enabled ? Colors.black87 : Colors.black54,
+                                          color: task.enabled
+                                              ? Colors.black87
+                                              : Colors.black54,
                                         ),
                                       ),
                                     ],
@@ -1693,8 +1651,10 @@ My inputs:
                               top: 0,
                               right: 0,
                               child: Container(
-                                padding:
-                                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 7,
+                                  vertical: 3,
+                                ),
                                 decoration: BoxDecoration(
                                   color: task.enabled
                                       ? const Color(0xFF0A7E68)
@@ -1768,7 +1728,9 @@ My inputs:
                                           builder: (context) => AlertDialog(
                                             title: const Text('Hidden Prompt'),
                                             content: SingleChildScrollView(
-                                              child: Text(msg['hidden_prompt'] ?? ''),
+                                              child: Text(
+                                                msg['hidden_prompt'] ?? '',
+                                              ),
                                             ),
                                             actions: [
                                               TextButton(
@@ -1860,32 +1822,6 @@ extension<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
 
-IconData _habitIconFromKey(String key) {
-  switch (key) {
-    case 'local_drink':
-      return Icons.local_drink;
-    case 'self_improvement':
-      return Icons.self_improvement;
-    case 'menu_book':
-      return Icons.menu_book;
-    case 'directions_walk':
-      return Icons.directions_walk;
-    case 'bedtime':
-      return Icons.bedtime;
-    case 'record_voice_over':
-      return Icons.record_voice_over;
-    case 'fitness_center':
-      return Icons.fitness_center;
-    case 'spa':
-      return Icons.spa;
-    case 'psychology':
-      return Icons.psychology;
-    case 'check_circle':
-    default:
-      return Icons.check_circle;
-  }
-}
-
 class TaskSettingsPage extends StatefulWidget {
   const TaskSettingsPage({
     super.key,
@@ -1917,7 +1853,9 @@ class _TaskSettingsPageState extends State<TaskSettingsPage> {
     await widget.onDelete(taskKey);
     if (!mounted) return;
     setState(() {
-      _draftTasks = _draftTasks.where((task) => task.taskKey != taskKey).toList();
+      _draftTasks = _draftTasks
+          .where((task) => task.taskKey != taskKey)
+          .toList();
     });
   }
 
@@ -2015,14 +1953,18 @@ class _TaskSettingsPageState extends State<TaskSettingsPage> {
                     spacing: 8,
                     children: [
                       Chip(
-                        label: Text(task.scheduleType == 'interval'
-                            ? 'Every ${task.intervalMinutes ?? 0} min'
-                            : 'At ${task.timeOfDay ?? '--:--'}'),
+                        label: Text(
+                          task.scheduleType == 'interval'
+                              ? 'Every ${task.intervalMinutes ?? 0} min'
+                              : 'At ${task.timeOfDay ?? '--:--'}',
+                        ),
                       ),
                       Chip(
-                        label: Text(task.route == 'review'
-                            ? 'Tap -> Review card'
-                            : 'Tap -> Task center'),
+                        label: Text(
+                          task.route == 'review'
+                              ? 'Tap -> Review card'
+                              : 'Tap -> Task center',
+                        ),
                       ),
                     ],
                   ),
@@ -2163,11 +2105,17 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
           ),
           const SizedBox(height: 6),
           DropdownButtonFormField<String>(
-            value: _scheduleType,
+            initialValue: _scheduleType,
             decoration: const InputDecoration(labelText: 'Schedule type'),
             items: const [
-              DropdownMenuItem(value: 'interval', child: Text('Every N minutes')),
-              DropdownMenuItem(value: 'daily', child: Text('Fixed time each day')),
+              DropdownMenuItem(
+                value: 'interval',
+                child: Text('Every N minutes'),
+              ),
+              DropdownMenuItem(
+                value: 'daily',
+                child: Text('Fixed time each day'),
+              ),
             ],
             onChanged: (value) {
               if (value == null) return;
@@ -2196,11 +2144,14 @@ class _TaskEditorPageState extends State<TaskEditorPage> {
             ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: _route,
+            initialValue: _route,
             decoration: const InputDecoration(labelText: 'Page on tap'),
             items: const [
               DropdownMenuItem(value: 'task', child: Text('Task center')),
-              DropdownMenuItem(value: 'review', child: Text('Night review page')),
+              DropdownMenuItem(
+                value: 'review',
+                child: Text('Night review page'),
+              ),
             ],
             onChanged: (value) {
               if (value == null) return;
@@ -2246,12 +2197,16 @@ class FeaturesPage extends StatelessWidget {
           trailing: const Icon(Icons.chevron_right),
           onTap: () async {
             if (action == 'english') {
-              final result = await Navigator.of(context).push<Map<String, dynamic>>(
-                MaterialPageRoute<Map<String, dynamic>>(
-                  builder: (context) => EnglishPracticePage(apiBaseUrl: apiBaseUrl),
-                ),
-              );
-              if (result != null && context.mounted && result['submitted'] == true) {
+              final result = await Navigator.of(context)
+                  .push<Map<String, dynamic>>(
+                    MaterialPageRoute<Map<String, dynamic>>(
+                      builder: (context) =>
+                          EnglishPracticePage(apiBaseUrl: apiBaseUrl),
+                    ),
+                  );
+              if (result != null &&
+                  context.mounted &&
+                  result['submitted'] == true) {
                 Navigator.of(context).pop(result);
               }
               return;
@@ -2267,11 +2222,9 @@ class FeaturesPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          tile('Today Dashboard', Icons.today_outlined, 'today'),
-          tile('Habits', Icons.grid_view_rounded, 'habits'),
+          tile('Growth Center', Icons.auto_graph_rounded, 'growth'),
           tile('Reminder Tasks', Icons.tune, 'tasks'),
           tile('Settings', Icons.settings_outlined, 'settings'),
-          tile('Progress', Icons.emoji_events_outlined, 'stats'),
           tile('Night Review Card', Icons.checklist_rtl_outlined, 'review'),
           tile('English Practice Card', Icons.school_outlined, 'english'),
           tile('Phrase Book', Icons.bookmark_outline, 'phrases'),
@@ -2280,7 +2233,9 @@ class FeaturesPage extends StatelessWidget {
             child: ListTile(
               leading: Icon(Icons.psychology_alt_outlined),
               title: Text('Memory runs automatically'),
-              subtitle: Text('Butler now learns stable profile info directly from chat.'),
+              subtitle: Text(
+                'Butler now learns stable profile info directly from chat.',
+              ),
             ),
           ),
         ],
@@ -2506,11 +2461,7 @@ class _ProfilePageState extends State<ProfilePage> {
         : updated['category']!;
     if (value.isEmpty) return;
 
-    await widget.onAdd(
-      key: item.memoryKey,
-      value: value,
-      category: category,
-    );
+    await widget.onAdd(key: item.memoryKey, value: value, category: category);
     if (!mounted) return;
     setState(() {
       _localMemories = _localMemories
@@ -2562,18 +2513,27 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               ActionChip(
                 label: const Text('english_level'),
-                onPressed: () =>
-                    _applySuggestion('english_level', 'learning', 'intermediate'),
+                onPressed: () => _applySuggestion(
+                  'english_level',
+                  'learning',
+                  'intermediate',
+                ),
               ),
               ActionChip(
                 label: const Text('study_goal'),
                 onPressed: () => _applySuggestion(
-                    'study_goal', 'learning', 'Improve spoken English'),
+                  'study_goal',
+                  'learning',
+                  'Improve spoken English',
+                ),
               ),
               ActionChip(
                 label: const Text('exercise_preference'),
                 onPressed: () => _applySuggestion(
-                    'exercise_preference', 'habit', 'Pull-ups and running'),
+                  'exercise_preference',
+                  'habit',
+                  'Pull-ups and running',
+                ),
               ),
             ],
           ),
@@ -2638,820 +2598,6 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-class HabitCenterPage extends StatefulWidget {
-  const HabitCenterPage({
-    super.key,
-    required this.habits,
-    required this.streaks,
-    required this.events,
-    required this.summary,
-    required this.onCheckIn,
-    required this.onSave,
-    required this.onDelete,
-  });
-
-  final List<HabitItemModel> habits;
-  final List<StreakItem> streaks;
-  final List<ProgressEvent> events;
-  final ProgressSummary summary;
-  final Future<void> Function(String habitKey) onCheckIn;
-  final Future<void> Function(HabitItemModel habit) onSave;
-  final Future<void> Function(String habitKey) onDelete;
-
-  @override
-  State<HabitCenterPage> createState() => _HabitCenterPageState();
-}
-
-class _HabitCenterPageState extends State<HabitCenterPage> {
-  late List<HabitItemModel> _habits;
-  late List<StreakItem> _streaks;
-  late List<ProgressEvent> _events;
-  bool _isMutating = false;
-  String _selectedCategory = 'all';
-
-  static const List<HabitItemModel> _popularTemplates = [
-    HabitItemModel(
-      habitKey: 'drink_water',
-      title: 'Drink Water',
-      icon: 'local_drink',
-      category: 'wellbeing',
-      enabled: true,
-      isCustom: false,
-    ),
-    HabitItemModel(
-      habitKey: 'walk_6000_steps',
-      title: 'Walk 6,000 Steps',
-      icon: 'directions_walk',
-      category: 'fitness',
-      enabled: true,
-      isCustom: false,
-    ),
-    HabitItemModel(
-      habitKey: 'read_20min',
-      title: 'Read 20 Min',
-      icon: 'menu_book',
-      category: 'learning',
-      enabled: true,
-      isCustom: false,
-    ),
-    HabitItemModel(
-      habitKey: 'no_phone_30min',
-      title: 'No Phone 30 Min',
-      icon: 'spa',
-      category: 'productivity',
-      enabled: true,
-      isCustom: false,
-    ),
-    HabitItemModel(
-      habitKey: 'speak_english_10min',
-      title: 'Speak English 10 Min',
-      icon: 'record_voice_over',
-      category: 'learning',
-      enabled: true,
-      isCustom: false,
-    ),
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _habits = widget.habits;
-    _streaks = widget.streaks;
-    _events = widget.events;
-  }
-
-  Future<void> _createHabit() async {
-    final created = await Navigator.of(context).push<HabitItemModel>(
-      MaterialPageRoute<HabitItemModel>(
-        builder: (context) => const HabitEditorPage(),
-      ),
-    );
-    if (created == null) return;
-
-    await widget.onSave(created);
-    if (!mounted) return;
-    setState(() {
-      _habits = [..._habits, created];
-    });
-  }
-
-  String get _today => DateTime.now().toIso8601String().split('T').first;
-
-  Map<String, int> _todayCounts() {
-    final counts = <String, int>{};
-    for (final event in _events) {
-      if (event.eventDate != _today) continue;
-      counts[event.statKey] = (counts[event.statKey] ?? 0) + 1;
-    }
-    return counts;
-  }
-
-  int _streakFor(String habitKey) {
-    for (final item in _streaks) {
-      if (item.statKey == habitKey) return item.count;
-    }
-    return 0;
-  }
-
-  String _categoryLabel(String key) {
-    switch (key) {
-      case 'fitness':
-        return 'Fitness';
-      case 'learning':
-        return 'Learning';
-      case 'productivity':
-        return 'Productivity';
-      case 'wellbeing':
-        return 'Wellbeing';
-      case 'all':
-      default:
-        return 'All';
-    }
-  }
-
-  Future<void> _quickAddTemplate(HabitItemModel template) async {
-    if (_habits.any((item) => item.habitKey == template.habitKey)) return;
-    await widget.onSave(template);
-    if (!mounted) return;
-    setState(() {
-      _habits = [..._habits, template];
-    });
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Added habit: ${template.title}')),
-    );
-  }
-
-  Future<void> _checkIn(HabitItemModel habit) async {
-    if (_isMutating) return;
-    setState(() {
-      _isMutating = true;
-    });
-    try {
-      await widget.onCheckIn(habit.habitKey);
-      if (!mounted) return;
-      final now = TimeOfDay.now();
-      final hh = now.hour.toString().padLeft(2, '0');
-      final mm = now.minute.toString().padLeft(2, '0');
-      setState(() {
-        _events = [
-          ProgressEvent(
-            id: 0,
-            statKey: habit.habitKey,
-            eventDate: _today,
-            eventTime: '$hh:$mm:00',
-          ),
-          ..._events,
-        ];
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Great job! ${habit.title} checked in.')),
-      );
-    } finally {
-      if (!mounted) return;
-      setState(() {
-        _isMutating = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final todayCounts = _todayCounts();
-    final enabledHabits = _habits.where((item) => item.enabled).toList();
-    final visibleHabits = _selectedCategory == 'all'
-        ? enabledHabits
-        : enabledHabits.where((item) => item.category == _selectedCategory).toList();
-    final doneTodayCount =
-        enabledHabits.where((item) => (todayCounts[item.habitKey] ?? 0) > 0).length;
-    final completion = enabledHabits.isEmpty ? 0.0 : doneTodayCount / enabledHabits.length;
-    final streakPeak = enabledHabits
-        .map((item) => _streakFor(item.habitKey))
-        .fold<int>(0, (prev, value) => value > prev ? value : prev);
-    final level = (_events.length ~/ 20) + 1;
-    final missingTemplates = _popularTemplates
-        .where((tpl) => !_habits.any((h) => h.habitKey == tpl.habitKey))
-        .take(4)
-        .toList();
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Habit Center'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: _createHabit,
-          ),
-        ],
-      ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: Colors.teal.shade50,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.teal.shade100),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(
-                      'Level $level Habit Builder',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: Colors.teal.shade900,
-                      ),
-                    ),
-                    const Spacer(),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        '${(completion * 100).round()}% today',
-                        style: const TextStyle(fontWeight: FontWeight.w700),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                LinearProgressIndicator(
-                  value: completion,
-                  minHeight: 10,
-                  borderRadius: BorderRadius.circular(999),
-                  backgroundColor: Colors.white,
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    _HabitMetricChip(
-                      icon: Icons.check_circle_outline,
-                      label: 'Completed',
-                      value: '$doneTodayCount/${enabledHabits.length}',
-                    ),
-                    const SizedBox(width: 8),
-                    _HabitMetricChip(
-                      icon: Icons.local_fire_department_outlined,
-                      label: 'Best streak',
-                      value: '$streakPeak d',
-                    ),
-                    const SizedBox(width: 8),
-                    _HabitMetricChip(
-                      icon: Icons.bolt_outlined,
-                      label: 'Check-ins',
-                      value: '${_events.length}',
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final key in const [
-                  'all',
-                  'wellbeing',
-                  'fitness',
-                  'learning',
-                  'productivity',
-                ])
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(_categoryLabel(key)),
-                      selected: _selectedCategory == key,
-                      onSelected: (_) {
-                        setState(() {
-                          _selectedCategory = key;
-                        });
-                      },
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: visibleHabits.map((habit) {
-              final todayCount = todayCounts[habit.habitKey] ?? 0;
-              final streak = _streakFor(habit.habitKey);
-              return InkWell(
-                borderRadius: BorderRadius.circular(16),
-                onTap: _isMutating ? null : () => _checkIn(habit),
-                child: Container(
-                  width: 156,
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-                  decoration: BoxDecoration(
-                    color: todayCount > 0 ? Colors.teal.shade100 : Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: todayCount > 0 ? Colors.teal.shade300 : Colors.black12,
-                    ),
-                    boxShadow: const [
-                      BoxShadow(
-                        color: Color(0x11000000),
-                        blurRadius: 8,
-                        offset: Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            _habitIconFromKey(habit.icon),
-                            size: 24,
-                            color: Colors.teal.shade700,
-                          ),
-                          const Spacer(),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(999),
-                            ),
-                            child: Text(
-                              '$streak d',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        habit.title,
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        todayCount > 0 ? 'Done today x$todayCount' : 'Tap to check in',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: todayCount > 0 ? Colors.teal.shade900 : Colors.black54,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          if (missingTemplates.isNotEmpty) ...[
-            const SizedBox(height: 18),
-            const Text(
-              'Popular Habits',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            ...missingTemplates.map(
-              (tpl) => Card(
-                child: ListTile(
-                  leading: Icon(_habitIconFromKey(tpl.icon)),
-                  title: Text(tpl.title),
-                  subtitle: Text(_categoryLabel(tpl.category)),
-                  trailing: FilledButton.tonal(
-                    onPressed: () => _quickAddTemplate(tpl),
-                    child: const Text('Add'),
-                  ),
-                ),
-              ),
-            ),
-          ],
-          const SizedBox(height: 16),
-          const Text(
-            'All Habits',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          ..._habits.map((habit) {
-            return Card(
-              child: ListTile(
-                leading: Icon(_habitIconFromKey(habit.icon)),
-                title: Text(habit.title),
-                subtitle: Text('${habit.category} • ${habit.habitKey}'),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Switch(
-                      value: habit.enabled,
-                      onChanged: (value) async {
-                        final updated = HabitItemModel(
-                          habitKey: habit.habitKey,
-                          title: habit.title,
-                          icon: habit.icon,
-                          category: habit.category,
-                          enabled: value,
-                          isCustom: habit.isCustom,
-                        );
-                        await widget.onSave(updated);
-                        if (!mounted) return;
-                        setState(() {
-                          _habits = _habits
-                              .map((item) => item.habitKey == updated.habitKey ? updated : item)
-                              .toList();
-                        });
-                      },
-                    ),
-                    if (habit.isCustom)
-                      IconButton(
-                        icon: const Icon(Icons.delete_outline),
-                        onPressed: () async {
-                          await widget.onDelete(habit.habitKey);
-                          if (!mounted) return;
-                          setState(() {
-                            _habits =
-                                _habits.where((item) => item.habitKey != habit.habitKey).toList();
-                            _events =
-                                _events.where((item) => item.statKey != habit.habitKey).toList();
-                            _streaks =
-                                _streaks.where((item) => item.statKey != habit.habitKey).toList();
-                          });
-                        },
-                      ),
-                  ],
-                ),
-              ),
-            );
-          }),
-          const SizedBox(height: 8),
-          Text(
-            'Global consistency score: ${widget.summary.consistencyScore}%',
-            style: const TextStyle(color: Colors.black54),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HabitMetricChip extends StatelessWidget {
-  const _HabitMetricChip({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
-
-  final IconData icon;
-  final String label;
-  final String value;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: Colors.teal.shade700),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: const TextStyle(fontSize: 10, color: Colors.black54),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  Text(
-                    value,
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class HabitEditorPage extends StatefulWidget {
-  const HabitEditorPage({super.key});
-
-  @override
-  State<HabitEditorPage> createState() => _HabitEditorPageState();
-}
-
-class _HabitEditorPageState extends State<HabitEditorPage> {
-  final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _keyController = TextEditingController();
-  String _icon = 'check_circle';
-  String _category = 'wellbeing';
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _keyController.dispose();
-    super.dispose();
-  }
-
-  void _save() {
-    final title = _titleController.text.trim();
-    final keyRaw = _keyController.text.trim().toLowerCase();
-    if (title.isEmpty || keyRaw.isEmpty) return;
-    Navigator.of(context).pop(
-      HabitItemModel(
-        habitKey: keyRaw,
-        title: title,
-        icon: _icon,
-        category: _category,
-        enabled: true,
-        isCustom: true,
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Create Habit')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          TextField(
-            controller: _titleController,
-            decoration: const InputDecoration(
-              labelText: 'Habit title',
-              hintText: 'Meditate 10 min',
-            ),
-          ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: _keyController,
-            decoration: const InputDecoration(
-              labelText: 'Habit key',
-              hintText: 'meditate_10min',
-            ),
-          ),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            value: _icon,
-            decoration: const InputDecoration(labelText: 'Icon'),
-            items: const [
-              DropdownMenuItem(value: 'check_circle', child: Text('Check')),
-              DropdownMenuItem(value: 'local_drink', child: Text('Water')),
-              DropdownMenuItem(value: 'self_improvement', child: Text('Stretch')),
-              DropdownMenuItem(value: 'menu_book', child: Text('Book')),
-              DropdownMenuItem(value: 'directions_walk', child: Text('Walk')),
-              DropdownMenuItem(value: 'bedtime', child: Text('Sleep')),
-              DropdownMenuItem(value: 'record_voice_over', child: Text('Speaking')),
-              DropdownMenuItem(value: 'fitness_center', child: Text('Gym')),
-              DropdownMenuItem(value: 'spa', child: Text('Relax')),
-              DropdownMenuItem(value: 'psychology', child: Text('Mind')),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() {
-                _icon = value;
-              });
-            },
-          ),
-          const SizedBox(height: 10),
-          DropdownButtonFormField<String>(
-            value: _category,
-            decoration: const InputDecoration(labelText: 'Category'),
-            items: const [
-              DropdownMenuItem(value: 'wellbeing', child: Text('Wellbeing')),
-              DropdownMenuItem(value: 'fitness', child: Text('Fitness')),
-              DropdownMenuItem(value: 'learning', child: Text('Learning')),
-              DropdownMenuItem(value: 'productivity', child: Text('Productivity')),
-            ],
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() {
-                _category = value;
-              });
-            },
-          ),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _save,
-            child: const Text('Create Habit'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class TodayDashboardPage extends StatelessWidget {
-  const TodayDashboardPage({
-    super.key,
-    required this.tasks,
-    required this.habits,
-    required this.summary,
-    required this.onCheckIn,
-    required this.onHabitCheckIn,
-    required this.onOpenEnglish,
-    required this.onOpenReview,
-    required this.onOpenTasks,
-    required this.onOpenHabits,
-    required this.onOpenProgress,
-  });
-
-  final List<ButlerTaskConfig> tasks;
-  final List<HabitItemModel> habits;
-  final ProgressSummary summary;
-  final Future<StatsSnapshot> Function(String statKey) onCheckIn;
-  final Future<void> Function(String habitKey) onHabitCheckIn;
-  final Future<void> Function() onOpenEnglish;
-  final Future<void> Function() onOpenReview;
-  final Future<void> Function() onOpenTasks;
-  final Future<void> Function() onOpenHabits;
-  final Future<void> Function() onOpenProgress;
-
-  @override
-  Widget build(BuildContext context) {
-    final enabledTasks = tasks.where((task) => task.enabled).toList();
-    final enabledHabits = habits.where((habit) => habit.enabled).toList();
-
-    Widget quickAction(String label, IconData icon, String key) {
-      return Expanded(
-        child: FilledButton.tonalIcon(
-          onPressed: () async {
-            await onCheckIn(key);
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Checked in: $label')),
-            );
-          },
-          icon: Icon(icon, size: 18),
-          label: Text(label),
-        ),
-      );
-    }
-
-    return Scaffold(
-      appBar: AppBar(title: const Text('Today Dashboard')),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Card(
-            child: ListTile(
-              leading: const Icon(Icons.local_fire_department_outlined),
-              title: const Text('Today Summary'),
-              subtitle: Text(
-                'Active: ${summary.todayActiveCount} • Consistency: ${summary.consistencyScore}% • Total check-ins: ${summary.totalEvents}',
-              ),
-            ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Quick Check-in',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              quickAction('English', Icons.school_outlined, 'english'),
-              const SizedBox(width: 8),
-              quickAction('Study', Icons.menu_book_outlined, 'study'),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              quickAction('Exercise', Icons.fitness_center, 'exercise'),
-              const SizedBox(width: 8),
-              quickAction('Reflection', Icons.nights_stay_outlined, 'reflection'),
-            ],
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Habit Check-in',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          if (enabledHabits.isEmpty)
-            const Card(
-              child: ListTile(
-                leading: Icon(Icons.grid_view_outlined),
-                title: Text('No habits yet'),
-                subtitle: Text('Create habits in Habit Center.'),
-              ),
-            )
-          else
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children: enabledHabits.take(8).map((habit) {
-                return InkWell(
-                  borderRadius: BorderRadius.circular(14),
-                  onTap: () async {
-                    await onHabitCheckIn(habit.habitKey);
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Checked in: ${habit.title}')),
-                    );
-                  },
-                  child: Container(
-                    width: 92,
-                    padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.teal.shade50,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(_habitIconFromKey(habit.icon), size: 24, color: Colors.teal.shade700),
-                        const SizedBox(height: 6),
-                        Text(
-                          habit.title,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          const SizedBox(height: 16),
-          const Text(
-            'Enabled Reminders',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          const SizedBox(height: 8),
-          if (enabledTasks.isEmpty)
-            const Card(
-              child: ListTile(
-                leading: Icon(Icons.notifications_off_outlined),
-                title: Text('No enabled tasks'),
-                subtitle: Text('Turn on reminders in Task Settings.'),
-              ),
-            )
-          else
-            ...enabledTasks.map(
-              (task) => Card(
-                child: ListTile(
-                  leading: const Icon(Icons.notifications_active_outlined),
-                  title: Text(task.title),
-                  subtitle: Text(task.scheduleType == 'interval'
-                      ? 'Every ${task.intervalMinutes ?? 0} minutes'
-                      : 'Daily at ${task.timeOfDay ?? '--:--'}'),
-                ),
-              ),
-            ),
-          const SizedBox(height: 16),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton.tonal(
-                onPressed: onOpenEnglish,
-                child: const Text('Open English Practice'),
-              ),
-              FilledButton.tonal(
-                onPressed: onOpenReview,
-                child: const Text('Open Night Review'),
-              ),
-              FilledButton.tonal(
-                onPressed: onOpenTasks,
-                child: const Text('Task Settings'),
-              ),
-              FilledButton.tonal(
-                onPressed: onOpenHabits,
-                child: const Text('Habit Center'),
-              ),
-              FilledButton.tonal(
-                onPressed: onOpenProgress,
-                child: const Text('Progress Details'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class PhraseBookPage extends StatefulWidget {
   const PhraseBookPage({
     super.key,
@@ -3503,16 +2649,20 @@ class _PhraseBookPageState extends State<PhraseBookPage> {
     final note = _noteController.text.trim();
     if (phrase.isEmpty) return;
 
-    final latest = await widget.onCreate(phrase: phrase, scene: scene, note: note);
+    final latest = await widget.onCreate(
+      phrase: phrase,
+      scene: scene,
+      note: note,
+    );
     if (!mounted) return;
     setState(() {
       _cards = latest;
       _phraseController.clear();
       _noteController.clear();
     });
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Saved to Phrase Book')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Saved to Phrase Book')));
   }
 
   @override
@@ -3696,7 +2846,8 @@ class _StatsPageState extends State<StatsPage> {
   }
 
   Future<String?> _pickStatKey(BuildContext context) async {
-    final choices = _streaks.map((item) => item.statKey).toSet().toList()..sort();
+    final choices = _streaks.map((item) => item.statKey).toSet().toList()
+      ..sort();
     if (choices.isEmpty) {
       choices.addAll(['english', 'study', 'exercise', 'reflection']);
     }
@@ -3720,9 +2871,9 @@ class _StatsPageState extends State<StatsPage> {
     final maxEvents = _dailyActivity.isEmpty
         ? 1
         : _dailyActivity
-            .map((item) => item.events)
-            .reduce((a, b) => a > b ? a : b)
-            .clamp(1, 9999);
+              .map((item) => item.events)
+              .reduce((a, b) => a > b ? a : b)
+              .clamp(1, 9999);
 
     Widget metricCard(String title, String value, IconData icon) {
       return Expanded(
@@ -3739,7 +2890,10 @@ class _StatsPageState extends State<StatsPage> {
               const SizedBox(height: 8),
               Text(
                 value,
-                style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
               const SizedBox(height: 4),
               Text(title, style: const TextStyle(color: Colors.black54)),
@@ -3767,42 +2921,43 @@ class _StatsPageState extends State<StatsPage> {
         onPressed: _isMutating
             ? null
             : () async {
-          final payload = await Navigator.of(context).push<Map<String, String>>(
-            MaterialPageRoute<Map<String, String>>(
-              builder: (context) => const ProgressRecordPage(),
-            ),
-          );
+                final payload = await Navigator.of(context)
+                    .push<Map<String, String>>(
+                      MaterialPageRoute<Map<String, String>>(
+                        builder: (context) => const ProgressRecordPage(),
+                      ),
+                    );
 
-          if (payload == null) return;
-          final statKey = (payload['stat_key'] ?? '').trim();
-          final count = int.tryParse(payload['count'] ?? '1') ?? 1;
-          if (statKey.isEmpty) return;
-          if (_isMutating) return;
+                if (payload == null) return;
+                final statKey = (payload['stat_key'] ?? '').trim();
+                final count = int.tryParse(payload['count'] ?? '1') ?? 1;
+                if (statKey.isEmpty) return;
+                if (_isMutating) return;
 
-          try {
-            setState(() {
-              _isMutating = true;
-            });
-            if (widget.onRecord == null) return;
-            final snapshot = await widget.onRecord!.call(statKey, count);
-            _applySnapshot(snapshot);
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Progress recorded')),
-            );
-          } catch (e) {
-            if (!context.mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to record progress: $e')),
-            );
-          } finally {
-            if (mounted) {
-              setState(() {
-                _isMutating = false;
-              });
-            }
-          }
-        },
+                try {
+                  setState(() {
+                    _isMutating = true;
+                  });
+                  if (widget.onRecord == null) return;
+                  final snapshot = await widget.onRecord!.call(statKey, count);
+                  _applySnapshot(snapshot);
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Progress recorded')),
+                  );
+                } catch (e) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to record progress: $e')),
+                  );
+                } finally {
+                  if (mounted) {
+                    setState(() {
+                      _isMutating = false;
+                    });
+                  }
+                }
+              },
         icon: const Icon(Icons.add_task),
         label: Text(_isMutating ? 'Saving...' : 'Add Progress'),
       ),
@@ -3851,16 +3006,24 @@ class _StatsPageState extends State<StatsPage> {
                                     _isMutating = true;
                                   });
                                   if (widget.onFreezeYesterday == null) return;
-                                  final snapshot = await widget.onFreezeYesterday!.call(stat);
+                                  final snapshot = await widget
+                                      .onFreezeYesterday!
+                                      .call(stat);
                                   _applySnapshot(snapshot);
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Freeze applied for yesterday')),
+                                    const SnackBar(
+                                      content: Text(
+                                        'Freeze applied for yesterday',
+                                      ),
+                                    ),
                                   );
                                 } catch (e) {
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Freeze failed: $e')),
+                                    SnackBar(
+                                      content: Text('Freeze failed: $e'),
+                                    ),
                                   );
                                 } finally {
                                   if (mounted) {
@@ -3883,16 +3046,24 @@ class _StatsPageState extends State<StatsPage> {
                                     _isMutating = true;
                                   });
                                   if (widget.onMakeupYesterday == null) return;
-                                  final snapshot = await widget.onMakeupYesterday!.call(stat);
+                                  final snapshot = await widget
+                                      .onMakeupYesterday!
+                                      .call(stat);
                                   _applySnapshot(snapshot);
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('Make-up recorded for yesterday')),
+                                    const SnackBar(
+                                      content: Text(
+                                        'Make-up recorded for yesterday',
+                                      ),
+                                    ),
                                   );
                                 } catch (e) {
                                   if (!context.mounted) return;
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('Make-up failed: $e')),
+                                    SnackBar(
+                                      content: Text('Make-up failed: $e'),
+                                    ),
                                   );
                                 } finally {
                                   if (mounted) {
@@ -3952,7 +3123,10 @@ class _StatsPageState extends State<StatsPage> {
               ),
               trailing: Text(
                 '${_weekReport.completionRate}%',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 18,
+                ),
               ),
             ),
           ),
@@ -3969,11 +3143,11 @@ class _StatsPageState extends State<StatsPage> {
                 .map(
                   (badge) => Chip(
                     avatar: Icon(
-                      badge.unlocked
-                          ? Icons.emoji_events
-                          : Icons.lock_outline,
+                      badge.unlocked ? Icons.emoji_events : Icons.lock_outline,
                       size: 18,
-                      color: badge.unlocked ? Colors.amber.shade700 : Colors.grey,
+                      color: badge.unlocked
+                          ? Colors.amber.shade700
+                          : Colors.grey,
                     ),
                     label: Text(badge.title),
                   ),
@@ -3989,25 +3163,23 @@ class _StatsPageState extends State<StatsPage> {
           Wrap(
             spacing: 4,
             runSpacing: 4,
-            children: _heatmap
-                .map((cell) {
-                  final colors = [
-                    Colors.grey.shade300,
-                    Colors.teal.shade100,
-                    Colors.teal.shade300,
-                    Colors.teal.shade500,
-                    Colors.teal.shade700,
-                  ];
-                  return Container(
-                    width: 14,
-                    height: 14,
-                    decoration: BoxDecoration(
-                      color: colors[cell.level.clamp(0, 4)],
-                      borderRadius: BorderRadius.circular(3),
-                    ),
-                  );
-                })
-                .toList(),
+            children: _heatmap.map((cell) {
+              final colors = [
+                Colors.grey.shade300,
+                Colors.teal.shade100,
+                Colors.teal.shade300,
+                Colors.teal.shade500,
+                Colors.teal.shade700,
+              ];
+              return Container(
+                width: 14,
+                height: 14,
+                decoration: BoxDecoration(
+                  color: colors[cell.level.clamp(0, 4)],
+                  borderRadius: BorderRadius.circular(3),
+                ),
+              );
+            }).toList(),
           ),
           const SizedBox(height: 16),
           Card(
@@ -4029,7 +3201,9 @@ class _StatsPageState extends State<StatsPage> {
                         for (final item in _dailyActivity)
                           Expanded(
                             child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                              ),
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
@@ -4094,30 +3268,32 @@ class _StatsPageState extends State<StatsPage> {
                   onPressed: _isMutating
                       ? null
                       : () async {
-                    try {
-                      setState(() {
-                        _isMutating = true;
-                      });
-                      if (widget.onDeleteEvent == null) return;
-                      final snapshot = await widget.onDeleteEvent!.call(item.id);
-                      _applySnapshot(snapshot);
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Progress deleted')),
-                      );
-                    } catch (e) {
-                      if (!context.mounted) return;
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Failed to delete: $e')),
-                      );
-                    } finally {
-                      if (mounted) {
-                        setState(() {
-                          _isMutating = false;
-                        });
-                      }
-                    }
-                  },
+                          try {
+                            setState(() {
+                              _isMutating = true;
+                            });
+                            if (widget.onDeleteEvent == null) return;
+                            final snapshot = await widget.onDeleteEvent!.call(
+                              item.id,
+                            );
+                            _applySnapshot(snapshot);
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(content: Text('Progress deleted')),
+                            );
+                          } catch (e) {
+                            if (!context.mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Failed to delete: $e')),
+                            );
+                          } finally {
+                            if (mounted) {
+                              setState(() {
+                                _isMutating = false;
+                              });
+                            }
+                          }
+                        },
                 ),
               ),
             );
@@ -4160,10 +3336,9 @@ class _ProgressRecordPageState extends State<ProgressRecordPage> {
     setState(() {
       _isSubmitting = true;
     });
-    Navigator.of(context).pop({
-      'stat_key': statKey,
-      'count': countText.isEmpty ? '1' : countText,
-    });
+    Navigator.of(
+      context,
+    ).pop({'stat_key': statKey, 'count': countText.isEmpty ? '1' : countText});
   }
 
   @override
@@ -4353,7 +3528,8 @@ class _EnglishPracticePageState extends State<EnglishPracticePage> {
         ? 'Also include 3 IELTS speaking vocabulary items (with short meaning and one example sentence each), one band-7 style answer line, and one fluent part-3 follow-up opinion line.'
         : '';
 
-    final prompt = '''
+    final prompt =
+        '''
 I am practicing spoken English for real life and IELTS improvement.
 Please respond in a natural, conversational tone (not textbook style), and do these 6 things:
 1) Fix my sentence.
@@ -4390,7 +3566,10 @@ $ieltsExtra
       if (!mounted) return;
       setState(() {
         _exampleChips = list
-            .map((item) => (item as Map<String, dynamic>)['text']?.toString() ?? '')
+            .map(
+              (item) =>
+                  (item as Map<String, dynamic>)['text']?.toString() ?? '',
+            )
             .where((value) => value.trim().isNotEmpty)
             .toList();
       });
@@ -4425,7 +3604,7 @@ $ieltsExtra
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: _scene,
+            initialValue: _scene,
             decoration: const InputDecoration(labelText: 'Scene'),
             items: const [
               DropdownMenuItem(
